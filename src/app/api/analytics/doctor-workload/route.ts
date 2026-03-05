@@ -1,11 +1,3 @@
-/**
- * GET /api/analytics/doctor-workload
- *
- * SQL Strategy: CTE with GROUP BY on doctor × day-of-week
- * Produces a heatmap matrix: doctor (Y) vs weekday (X) vs encounter count (Z).
- * Composite index (doctorId, departmentId) makes this fast.
- */
-
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 
@@ -14,7 +6,6 @@ export const revalidate = 300;
 
 export async function GET() {
   try {
-    // Heatmap data: doctor × weekday encounter distribution
     const heatmapRows = await db.$queryRaw<
       {
         doctor_name: string;
@@ -28,25 +19,23 @@ export async function GET() {
     >`
       WITH doctor_day_matrix AS (
         SELECT
-          doc.name         AS doctor_name,
+          doc.name                    AS doctor_name,
           doc.specialization,
-          doc.seniority_level,
-          dd.week_day_name,
-          dd.week_day,
-          COUNT(pe.id)     AS encounter_count,
-          AVG(pe.wait_time) AS avg_wait
+          doc."seniorityLevel"        AS seniority_level,
+          dd."weekDayName"            AS week_day_name,
+          dd."weekDay"                AS week_day,
+          COUNT(pe.id)                AS encounter_count,
+          AVG(pe."waitTime")          AS avg_wait
         FROM patient_encounters pe
-        INNER JOIN doctors doc ON pe.doctor_id = doc.id
-        INNER JOIN date_dimension dd ON pe.date_id = dd.id
-        GROUP BY doc.id, doc.name, doc.specialization, doc.seniority_level,
-                 dd.week_day, dd.week_day_name
+        INNER JOIN doctors doc ON pe."doctorId" = doc.id
+        INNER JOIN date_dimension dd ON pe."dateId" = dd.id
+        GROUP BY doc.id, doc.name, doc.specialization, doc."seniorityLevel",
+                 dd."weekDay", dd."weekDayName"
       )
-      SELECT *
-      FROM doctor_day_matrix
+      SELECT * FROM doctor_day_matrix
       ORDER BY doctor_name, week_day
     `;
 
-    // Summary per doctor
     const summaryRows = await db.$queryRaw<
       {
         doctor_name: string;
@@ -59,16 +48,16 @@ export async function GET() {
       }[]
     >`
       SELECT
-        doc.name            AS doctor_name,
+        doc.name                                             AS doctor_name,
         doc.specialization,
-        dept.name           AS department,
-        COUNT(pe.id)        AS total_encounters,
-        ROUND(AVG(pe.wait_time)::numeric, 1)       AS avg_wait_minutes,
-        ROUND(AVG(pe.length_of_stay)::numeric, 1)  AS avg_los_hours,
-        ROUND(SUM(pe.total_cost)::numeric, 2)      AS total_revenue
+        dept.name                                            AS department,
+        COUNT(pe.id)                                         AS total_encounters,
+        ROUND(AVG(pe."waitTime")::numeric, 1)               AS avg_wait_minutes,
+        ROUND(AVG(pe."lengthOfStay")::numeric, 1)           AS avg_los_hours,
+        ROUND(SUM(pe."totalCost")::numeric, 2)              AS total_revenue
       FROM patient_encounters pe
-      INNER JOIN doctors doc  ON pe.doctor_id = doc.id
-      INNER JOIN departments dept ON pe.department_id = dept.id
+      INNER JOIN doctors doc   ON pe."doctorId" = doc.id
+      INNER JOIN departments dept ON pe."departmentId" = dept.id
       GROUP BY doc.id, doc.name, doc.specialization, dept.name
       ORDER BY total_encounters DESC
     `;

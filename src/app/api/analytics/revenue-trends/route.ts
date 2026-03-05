@@ -1,14 +1,3 @@
-/**
- * GET /api/analytics/revenue-trends
- *
- * SQL Strategy: CTE with window function for running totals.
- * Joins PatientEncounters (Fact) with DateDimension to produce
- * monthly revenue grouped by year-month — the canonical
- * "Revenue Trends" query referenced in the resume.
- *
- * Leverages composite index: (dateId, totalCost)
- */
-
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 
@@ -27,27 +16,27 @@ export async function GET() {
         encounter_count: bigint;
         avg_revenue_per_encounter: number;
         running_total: number;
-        mom_growth_pct: number | null; // month-over-month %
+        mom_growth_pct: number | null;
       }[]
     >`
       WITH monthly_revenue AS (
         SELECT
           dd.year,
           dd.month,
-          dd.month_name,
-          (dd.year || '-' || LPAD(dd.month::text, 2, '0')) AS period,
-          SUM(pe.total_cost)                                AS total_revenue,
-          COUNT(pe.id)                                      AS encounter_count,
-          AVG(pe.total_cost)                                AS avg_revenue_per_encounter
+          dd."monthName"                                              AS month_name,
+          (dd.year || '-' || LPAD(dd.month::text, 2, '0'))           AS period,
+          SUM(pe."totalCost")                                         AS total_revenue,
+          COUNT(pe.id)                                                AS encounter_count,
+          AVG(pe."totalCost")                                         AS avg_revenue_per_encounter
         FROM patient_encounters pe
-        INNER JOIN date_dimension dd ON pe.date_id = dd.id
-        GROUP BY dd.year, dd.month, dd.month_name
+        INNER JOIN date_dimension dd ON pe."dateId" = dd.id
+        GROUP BY dd.year, dd.month, dd."monthName"
       ),
       with_window AS (
         SELECT
           *,
-          SUM(total_revenue) OVER (ORDER BY year, month)  AS running_total,
-          LAG(total_revenue) OVER (ORDER BY year, month)  AS prev_month_revenue
+          SUM(total_revenue) OVER (ORDER BY year, month)   AS running_total,
+          LAG(total_revenue) OVER (ORDER BY year, month)   AS prev_month_revenue
         FROM monthly_revenue
       )
       SELECT
@@ -55,10 +44,10 @@ export async function GET() {
         month,
         month_name,
         period,
-        ROUND(total_revenue::numeric, 2)                        AS total_revenue,
+        ROUND(total_revenue::numeric, 2)                             AS total_revenue,
         encounter_count,
-        ROUND(avg_revenue_per_encounter::numeric, 2)            AS avg_revenue_per_encounter,
-        ROUND(running_total::numeric, 2)                        AS running_total,
+        ROUND(avg_revenue_per_encounter::numeric, 2)                 AS avg_revenue_per_encounter,
+        ROUND(running_total::numeric, 2)                             AS running_total,
         CASE
           WHEN prev_month_revenue IS NULL OR prev_month_revenue = 0 THEN NULL
           ELSE ROUND(((total_revenue - prev_month_revenue) / prev_month_revenue * 100)::numeric, 1)

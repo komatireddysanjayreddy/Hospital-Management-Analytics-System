@@ -1,16 +1,3 @@
-/**
- * GET /api/analytics/kpi
- *
- * Aggregated KPI summary for the dashboard header cards:
- *   - Total encounters & MoM change
- *   - Average Length of Stay (LOS)
- *   - Total Revenue & MoM change
- *   - Average Wait Time
- *   - Patient volume (unique patients)
- *
- * Uses two CTEs: current period vs prior period for delta calculations.
- */
-
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 
@@ -32,41 +19,39 @@ export async function GET() {
       }[]
     >`
       SELECT
-        COUNT(pe.id)                                           AS total_encounters,
-        COUNT(DISTINCT pe.patient_id)                         AS unique_patients,
-        ROUND(SUM(pe.total_cost)::numeric, 2)                AS total_revenue,
-        ROUND(AVG(pe.wait_time)::numeric, 1)                 AS avg_wait_minutes,
-        ROUND(AVG(pe.length_of_stay)::numeric, 1)            AS avg_los_hours,
-        ROUND(AVG(pe.total_cost)::numeric, 2)                AS avg_cost_per_encounter,
-        SUM(pe.procedure_count)                              AS total_procedures,
-        SUM(pe.lab_test_count)                               AS total_lab_tests
+        COUNT(pe.id)                                          AS total_encounters,
+        COUNT(DISTINCT pe."patientId")                       AS unique_patients,
+        ROUND(SUM(pe."totalCost")::numeric, 2)              AS total_revenue,
+        ROUND(AVG(pe."waitTime")::numeric, 1)               AS avg_wait_minutes,
+        ROUND(AVG(pe."lengthOfStay")::numeric, 1)           AS avg_los_hours,
+        ROUND(AVG(pe."totalCost")::numeric, 2)              AS avg_cost_per_encounter,
+        SUM(pe."procedureCount")                            AS total_procedures,
+        SUM(pe."labTestCount")                              AS total_lab_tests
       FROM patient_encounters pe
     `;
 
-    // Encounter type breakdown
     const typeRows = await db.$queryRaw<
       { encounter_type: string; count: bigint; revenue: number }[]
     >`
       SELECT
-        encounter_type,
-        COUNT(*)                              AS count,
-        ROUND(SUM(total_cost)::numeric, 2)    AS revenue
+        "encounterType"                           AS encounter_type,
+        COUNT(*)                                  AS count,
+        ROUND(SUM("totalCost")::numeric, 2)       AS revenue
       FROM patient_encounters
-      GROUP BY encounter_type
+      GROUP BY "encounterType"
       ORDER BY count DESC
     `;
 
-    // Insurance mix breakdown
     const insuranceRows = await db.$queryRaw<
       { insurance_type: string; count: bigint; avg_cost: number }[]
     >`
       SELECT
-        p.insurance_type,
-        COUNT(pe.id)                             AS count,
-        ROUND(AVG(pe.total_cost)::numeric, 2)    AS avg_cost
+        p."insuranceType"                          AS insurance_type,
+        COUNT(pe.id)                               AS count,
+        ROUND(AVG(pe."totalCost")::numeric, 2)    AS avg_cost
       FROM patient_encounters pe
-      INNER JOIN patients p ON pe.patient_id = p.id
-      GROUP BY p.insurance_type
+      INNER JOIN patients p ON pe."patientId" = p.id
+      GROUP BY p."insuranceType"
       ORDER BY count DESC
     `;
 
