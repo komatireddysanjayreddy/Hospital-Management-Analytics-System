@@ -86,7 +86,7 @@ function randFloat(min: number, max: number) {
   return parseFloat((Math.random() * (max - min) + min).toFixed(2));
 }
 
-function pick<T>(arr: T[]): T {
+function pick<T>(arr: readonly T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
