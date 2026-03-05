@@ -1,7 +1,7 @@
 /**
  * Database connection using @neondatabase/serverless
- * Optimized for Vercel Edge/Serverless with connection pooling via Neon HTTP driver.
- * Falls back to standard Prisma client for local development.
+ * Prisma v7: connection URL is passed via constructor (not schema.prisma).
+ * Uses Neon HTTP adapter in production for serverless connection pooling.
  */
 
 import { PrismaClient } from "@prisma/client";
@@ -14,9 +14,6 @@ if (typeof WebSocket === "undefined") {
   neonConfig.webSocketConstructor = ws;
 }
 
-// ─── Singleton pattern for Prisma client ─────────────────
-// Prevents exhausting DB connections in Next.js hot-reload dev mode
-
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
@@ -27,17 +24,13 @@ function createPrismaClient(): PrismaClient {
     throw new Error("DATABASE_URL environment variable is not set.");
   }
 
-  // Use Neon adapter in production/serverless for HTTP-based connection pooling
-  if (process.env.NODE_ENV === "production" || process.env.USE_NEON_ADAPTER === "true") {
-    const pool = new Pool({ connectionString });
-    const adapter = new PrismaNeon(pool);
-    return new PrismaClient({ adapter } as ConstructorParameters<typeof PrismaClient>[0]);
-  }
-
-  // Standard client for local development (uses DATABASE_URL directly)
+  // Neon HTTP adapter — optimal for Vercel serverless (no persistent TCP)
+  const pool = new Pool({ connectionString });
+  const adapter = new PrismaNeon(pool);
   return new PrismaClient({
-    log: process.env.NODE_ENV === "development" ? ["query", "warn", "error"] : ["error"],
-  });
+    adapter,
+    log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
+  } as ConstructorParameters<typeof PrismaClient>[0]);
 }
 
 export const db: PrismaClient =
