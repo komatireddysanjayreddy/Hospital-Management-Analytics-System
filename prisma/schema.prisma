@@ -1,0 +1,185 @@
+// ============================================================
+// Star Schema for Hospital Management Analytics System
+// Fact Table: PatientEncounters
+// Dimension Tables: Patients, Doctors, Departments, DateDimension
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── DIMENSION: Date (Time-Series Analysis) ───────────────
+model DateDimension {
+  id          Int      @id @default(autoincrement())
+  date        DateTime @unique @db.Date
+  day         Int
+  month       Int
+  monthName   String
+  quarter     Int
+  year        Int
+  weekDay     Int
+  weekDayName String
+  weekOfYear  Int
+  isWeekend   Boolean
+  isFiscalQ1  Boolean
+  isFiscalQ2  Boolean
+  isFiscalQ3  Boolean
+  isFiscalQ4  Boolean
+
+  encounters  PatientEncounter[]
+
+  @@index([year, month])
+  @@index([quarter, year])
+  @@map("date_dimension")
+}
+
+// ─── DIMENSION: Departments ───────────────────────────────
+model Department {
+  id             Int                @id @default(autoincrement())
+  name           String             @unique
+  code           String             @unique
+  floor          Int
+  bedCapacity    Int
+  category       DepartmentCategory
+  headDoctorName String
+
+  encounters     PatientEncounter[]
+  doctors        Doctor[]
+
+  @@map("departments")
+}
+
+// ─── DIMENSION: Doctors ───────────────────────────────────
+model Doctor {
+  id             Int            @id @default(autoincrement())
+  name           String
+  employeeId     String         @unique
+  specialization String
+  yearsExp       Int
+  seniorityLevel SeniorityLevel
+  departmentId   Int
+
+  department     Department       @relation(fields: [departmentId], references: [id])
+  encounters     PatientEncounter[]
+
+  @@index([departmentId])
+  @@map("doctors")
+}
+
+// ─── DIMENSION: Patients ──────────────────────────────────
+model Patient {
+  id            Int           @id @default(autoincrement())
+  mrn           String        @unique
+  firstName     String
+  lastName      String
+  dateOfBirth   DateTime      @db.Date
+  gender        Gender
+  bloodType     BloodType
+  city          String
+  state         String
+  insuranceType InsuranceType
+
+  encounters    PatientEncounter[]
+
+  @@index([gender])
+  @@index([insuranceType])
+  @@map("patients")
+}
+
+// ─── FACT TABLE: PatientEncounters ────────────────────────
+// Core metrics: totalCost, lengthOfStay, waitTime
+model PatientEncounter {
+  id             Int           @id @default(autoincrement())
+
+  // Foreign Keys — all indexed for OLAP join performance
+  patientId      Int
+  doctorId       Int
+  departmentId   Int
+  dateId         Int
+
+  // Degenerate Dimensions
+  encounterType  EncounterType
+  diagnosisCode  String
+  diagnosisGroup String
+
+  // Additive Measures (Numeric Facts)
+  totalCost      Decimal  @db.Decimal(10, 2)
+  lengthOfStay   Int      // hours
+  waitTime       Int      // minutes
+  procedureCount Int
+  medicationCost Decimal  @db.Decimal(10, 2)
+  labTestCount   Int
+
+  createdAt      DateTime @default(now())
+
+  patient        Patient       @relation(fields: [patientId], references: [id])
+  doctor         Doctor        @relation(fields: [doctorId], references: [id])
+  department     Department    @relation(fields: [departmentId], references: [id])
+  date           DateDimension @relation(fields: [dateId], references: [id])
+
+  // Single-column FK indexes
+  @@index([patientId])
+  @@index([doctorId])
+  @@index([departmentId])
+  @@index([dateId])
+  // Composite indexes for analytical queries
+  @@index([departmentId, dateId])
+  @@index([doctorId, departmentId])
+  @@index([dateId, totalCost])
+  @@map("patient_encounters")
+}
+
+// ─── ENUMS ────────────────────────────────────────────────
+enum DepartmentCategory {
+  EMERGENCY
+  SURGICAL
+  MEDICAL
+  DIAGNOSTIC
+  OUTPATIENT
+  CRITICAL_CARE
+}
+
+enum SeniorityLevel {
+  RESIDENT
+  ATTENDING
+  SENIOR_ATTENDING
+  CHIEF
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum BloodType {
+  A_POS
+  A_NEG
+  B_POS
+  B_NEG
+  AB_POS
+  AB_NEG
+  O_POS
+  O_NEG
+}
+
+enum InsuranceType {
+  MEDICARE
+  MEDICAID
+  PRIVATE
+  SELF_PAY
+  WORKERS_COMP
+}
+
+enum EncounterType {
+  INPATIENT
+  OUTPATIENT
+  EMERGENCY
+  DAY_SURGERY
+  OBSERVATION
+}
