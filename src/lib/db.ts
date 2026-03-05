@@ -1,11 +1,11 @@
 /**
- * Database connection — Prisma v7 + @neondatabase/serverless HTTP transport
- * Uses neon() SQL function (not Pool) for Vercel serverless compatibility.
+ * Database connection — Prisma v7 + @neondatabase/serverless
+ * PrismaNeon accepts a PoolConfig object and creates the Pool internally.
  */
 
 import { PrismaClient } from "@prisma/client";
-import { neon } from "@neondatabase/serverless";
-import { PrismaNeon } from "@prisma/adapter-neon";
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { PrismaNeon } = require("@prisma/adapter-neon");
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
@@ -17,8 +17,8 @@ function createPrismaClient(): PrismaClient {
     throw new Error("DATABASE_URL environment variable is not set.");
   }
 
-  const sql = neon(connectionString);
-  const adapter = new PrismaNeon(sql);
+  // PrismaNeon takes a PoolConfig — it instantiates the Neon Pool internally
+  const adapter = new PrismaNeon({ connectionString });
   return new PrismaClient({
     adapter,
     log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
